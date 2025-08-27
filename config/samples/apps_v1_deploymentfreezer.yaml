@@ -6,4 +6,5 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: deploymentfreezer-sample
 spec:
-  # TODO(user): Add fields here
+  deploymentName: nginx-deployment
+  freezeDurationInSec: 100
