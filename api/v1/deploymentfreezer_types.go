@@ -25,20 +25,15 @@ import (
 
 // DeploymentFreezerSpec defines the desired state of DeploymentFreezer
 type DeploymentFreezerSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
-	// foo is an example field of DeploymentFreezer. Edit deploymentfreezer_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
+	DeploymentName      string `json:"deploymentName"`
+	FreezeDurationInSec int32  `json:"freezeDurationInSec"`
 }
 
 // DeploymentFreezerStatus defines the observed state of DeploymentFreezer.
 type DeploymentFreezerStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	PrevReplicaCount *int32       `json:"prevReplicaCount"`
+	CompletionTime   *metav1.Time `json:"completionTime,omitempty"`
+	FreezeEndTime    *metav1.Time `json:"freezeStartTime,omitempty"`
 }
 
 // +kubebuilder:object:root=true
