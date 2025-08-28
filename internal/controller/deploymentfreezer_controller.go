@@ -83,6 +83,8 @@ func (r *DeploymentFreezerReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{}, nil
 }
 
+// validateNoConflicts checks for existing active DeploymentFreezer resources targeting the same Deployment.
+// An active DeploymentFreezer is one that has a CreationTime set but no CompletionTime.
 func (r *DeploymentFreezerReconciler) validateNoConflicts(ctx context.Context, deploymentFreezer *depappsv1.DeploymentFreezer) error {
 	var existingFreezers depappsv1.DeploymentFreezerList
 	if err := r.List(ctx, &existingFreezers, client.InNamespace(deploymentFreezer.Namespace)); err != nil {
