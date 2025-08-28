@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -50,16 +51,23 @@ func (r *DeploymentFreezerReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Skip if already completed.
 	if deploymentFreezer.Status.CompletionTime != nil {
 		logger.Info("Reconciliation already completed for this DeploymentFreezer", "name", deploymentFreezer.Name)
 
 		return ctrl.Result{}, nil
 	}
 
+	if err := r.validateNoConflicts(ctx, &deploymentFreezer); err != nil {
+		logger.Error(err, "Conflict detected with another active DeploymentFreezer", "deploymentName", deploymentFreezer.Spec.DeploymentName)
+
+		return ctrl.Result{}, nil
+	}
+
+	// Get the target deployment (we know it exists from conflict check)
 	var targetDeployment appsv1.Deployment
 	if err := r.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: deploymentFreezer.Spec.DeploymentName}, &targetDeployment); err != nil {
 		logger.Error(err, "Failed to get target Deployment", "deploymentName", deploymentFreezer.Spec.DeploymentName)
-
 		return ctrl.Result{}, err
 	}
 	// Store the original replica count.
@@ -75,13 +83,34 @@ func (r *DeploymentFreezerReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{}, nil
 }
 
+func (r *DeploymentFreezerReconciler) validateNoConflicts(ctx context.Context, deploymentFreezer *depappsv1.DeploymentFreezer) error {
+	var existingFreezers depappsv1.DeploymentFreezerList
+	if err := r.List(ctx, &existingFreezers, client.InNamespace(deploymentFreezer.Namespace)); err != nil {
+		return err
+	}
+
+	for _, existingFreezer := range existingFreezers.Items {
+		// Check if another active DeploymentFreezer is targeting the same Deployment.
+		if existingFreezer.Name != deploymentFreezer.Name && existingFreezer.Spec.DeploymentName == deploymentFreezer.Spec.DeploymentName &&
+			existingFreezer.Status.CompletionTime == nil && existingFreezer.Status.CreationTime != nil {
+			return fmt.Errorf("conflict detected: another active DeploymentFreezer (%s) is targeting the same Deployment (%s)",
+				existingFreezer.Name, existingFreezer.Spec.DeploymentName)
+		}
+	}
+
+	return nil
+}
+
 func (r *DeploymentFreezerReconciler) freezeDeployment(ctx context.Context, logger logr.Logger, targetDeployment appsv1.Deployment,
 	deploymentFreezer depappsv1.DeploymentFreezer) (ctrl.Result, error) {
 	logger.Info("Storing original replica count and scaling down Deployment", "deploymentName", targetDeployment.Name)
 
+	now := time.Now()
+
 	replicas := *targetDeployment.Spec.Replicas
+	deploymentFreezer.Status.CreationTime = &metav1.Time{Time: now}
 	deploymentFreezer.Status.PrevReplicaCount = &replicas
-	deploymentFreezer.Status.FreezeEndTime = &metav1.Time{Time: time.Now().Add(time.Duration(deploymentFreezer.Spec.FreezeDurationInSec) * time.Second)}
+	deploymentFreezer.Status.FreezeEndTime = &metav1.Time{Time: now.Add(time.Duration(deploymentFreezer.Spec.FreezeDurationInSec) * time.Second)}
 
 	// Scale down deployment replica count to 0 and annotate.
 	targetDeployment.Spec.Replicas = int32Ptr(0)
@@ -115,11 +144,17 @@ func (r *DeploymentFreezerReconciler) unfreezeDeployment(ctx context.Context, lo
 	now := time.Now()
 
 	if now.Before(deploymentFreezer.Status.FreezeEndTime.Time) {
-		requeueAfter := deploymentFreezer.Status.FreezeEndTime.Time.Sub(now)
+		requeueAfter := deploymentFreezer.Status.FreezeEndTime.Sub(now)
 		logger.Info("Freeze duration not yet elapsed, requeuing", "requeueAfter", requeueAfter)
 
-		// Requeue it again for better relaibility in case of controller restart.
+		// Requeue it again for better reliability in case of controller restart.
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	// Warn about manual changes to the deployment during the freeze period and overwrite manual change.
+	currrentReplicas := *targetDeployment.Spec.Replicas
+	if currrentReplicas != 0 {
+		logger.Info("Warning: Deployment replica count was manually changed during freeze period", "currentReplicas", currrentReplicas)
 	}
 
 	targetDeployment.Spec.Replicas = deploymentFreezer.Status.PrevReplicaCount

@@ -106,6 +106,10 @@ func (in *DeploymentFreezerStatus) DeepCopyInto(out *DeploymentFreezerStatus) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.CreationTime != nil {
+		in, out := &in.CreationTime, &out.CreationTime
+		*out = (*in).DeepCopy()
+	}
 	if in.CompletionTime != nil {
 		in, out := &in.CompletionTime, &out.CompletionTime
 		*out = (*in).DeepCopy()

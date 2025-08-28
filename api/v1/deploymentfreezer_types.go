@@ -32,6 +32,7 @@ type DeploymentFreezerSpec struct {
 // DeploymentFreezerStatus defines the observed state of DeploymentFreezer.
 type DeploymentFreezerStatus struct {
 	PrevReplicaCount *int32       `json:"prevReplicaCount"`
+	CreationTime     *metav1.Time `json:"creationTime,omitempty"`
 	CompletionTime   *metav1.Time `json:"completionTime,omitempty"`
 	FreezeEndTime    *metav1.Time `json:"freezeStartTime,omitempty"`
 }

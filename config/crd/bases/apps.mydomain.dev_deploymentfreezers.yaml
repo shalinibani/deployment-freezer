@@ -54,6 +54,9 @@ spec:
               completionTime:
                 format: date-time
                 type: string
+              creationTime:
+                format: date-time
+                type: string
               freezeStartTime:
                 format: date-time
                 type: string
